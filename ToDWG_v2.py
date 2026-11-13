@@ -44,7 +44,7 @@ import time
 import traceback
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -4409,7 +4409,8 @@ def run_gui():
         return path[:10] + "…" + path[-(limit - 11):]
 
     def refresh_outdir_label():
-        outdir_var.set(short_dir(out_state["dir"]))
+        outdir_view["full"] = out_state["dir"]
+        render_outdir_value()
 
     def on_choose_out_dir():
         """Выбор папки результата; сетевая допускается после проверки."""
@@ -4464,9 +4465,10 @@ def run_gui():
                 button.config(state="disabled", fg=dim, cursor="arrow",
                               bg=btn_bg)
             if folder_state["mode"]:
-                outdir_var.set("рядом с исходным файлом (по умолчанию)")
+                outdir_view["full"] = "рядом с исходным файлом"
             else:
-                outdir_var.set(f"по умолчанию: {short_dir(out_state['dir'])}")
+                outdir_view["full"] = out_state["dir"]
+            render_outdir_value()
 
     # Галочка — выше строки «Папка результата», выровнена с другими галочками.
     manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
@@ -4490,14 +4492,38 @@ def run_gui():
                             font=FONT_BODY_SM, bg=WIN11_CARD_BG,
                             fg=WIN11_TEXT, anchor="w")
     outdir_value.pack(side="left", padx=(6, 8), fill="x", expand=True)
+    outdir_view = {"full": out_state["dir"]}
+    outdir_font = tkfont.Font(font=FONT_BODY_SM)
+
+    def _ellipsize_text(text, max_px):
+        if not text or outdir_font.measure(text) <= max_px:
+            return text
+        ell = "…"
+        for keep in range(len(text) - 1, 0, -1):
+            head = (keep + 1) // 2
+            tail = keep // 2
+            cand = text[:head] + ell + (text[-tail:] if tail else "")
+            if outdir_font.measure(cand) <= max_px:
+                return cand
+        return ell
+
+    def render_outdir_value():
+        text = outdir_view["full"]
+        width = outdir_value.winfo_width()
+        if width <= 1:
+            outdir_var.set(text)
+            return
+        outdir_var.set(_ellipsize_text(text, max(40, width - 8)))
+
     outdir_button = tk.Button(outdir_row, text="Изменить…",
                               command=on_choose_out_dir,
                               font=FONT_BODY_SM, bg="#E5E5E5", fg=WIN11_TEXT,
                               activebackground="#D6D6D6",
                               activeforeground=WIN11_TEXT,
                               relief="flat", bd=0, highlightthickness=0,
-                              cursor="hand2", padx=10, pady=2)
+                              cursor="hand2", padx=10, pady=2, width=10)
     outdir_button.pack(side="right")
+    outdir_value.bind("<Configure>", lambda e: render_outdir_value())
     outdir_widgets.update({"label": outdir_label, "value": outdir_value,
                            "button": outdir_button})
 
@@ -4629,11 +4655,12 @@ def run_gui():
 
     hint_label = tk.Label(card, textvariable=hint_var, font=FONT_BODY_SM,
                           bg=WIN11_CARD_BG, fg=WIN11_DANGER,
-                          wraplength=410, justify="center")
+                          wraplength=410, justify="left")
 
     def sync_hint(*_):
         if hint_var.get().strip():
-            hint_label.pack(pady=(2, 0), before=red_top)
+            hint_label.pack(pady=(2, 0), padx=(140, 10), anchor="w",
+                            before=red_top)
         else:
             hint_label.pack_forget()
 
