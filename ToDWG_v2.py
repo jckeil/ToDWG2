@@ -490,7 +490,7 @@ FONT_TITLE    = ("Segoe UI Variable Display", 20, "bold")
 FONT_H1       = ("Segoe UI Variable Display", 14, "bold")
 FONT_BODY     = ("Segoe UI Variable Text", 11)
 FONT_BODY_SM  = ("Segoe UI Variable Text", 10)
-FONT_WARN     = ("Segoe UI Variable Display", 13, "bold")
+FONT_WARN     = ("Segoe UI Variable Display", 10, "bold")
 FONT_VERSION  = ("Segoe UI Variable Text", 9)
 
 
@@ -4475,10 +4475,7 @@ def run_gui():
             if button is not None:
                 button.config(state="disabled", fg=dim, cursor="arrow",
                               bg=btn_bg)
-            if pending:
-                outdir_view["full"] = "Рядом с исходным файлом"
-            else:
-                outdir_view["full"] = out_state["dir"]
+            outdir_view["full"] = "Рядом с исходным файлом"
             render_outdir_value()
 
     def on_manual_folder_toggle():
@@ -4499,7 +4496,7 @@ def run_gui():
 
     outdir_row = tk.Frame(card, bg=WIN11_CARD_BG)
     outdir_row.pack(padx=(90, 90), pady=(6, 0), fill="x")
-    outdir_label = tk.Label(outdir_row, text="Папка результата:",
+    outdir_label = tk.Label(outdir_row, text="Сохранить в:",
                             font=FONT_BODY_SM, bg=WIN11_CARD_BG,
                             fg=WIN11_SUBTEXT)
     outdir_label.pack(side="left")
@@ -4669,7 +4666,7 @@ def run_gui():
         font=FONT_WARN, bg=WIN11_CARD_BG, fg=WIN11_DANGER, justify="center",
         wraplength=460)
     red_top.pack(pady=(14, 0))
-    tk.Label(card, text="ДЛЯ АВАРИЙНОЙ ОСТАНОВКИ НАЖМИТЕ CTRL+ALT+0",
+    tk.Label(card, text="ДЛЯ АВАРИЙНОЙ ОСТАНОВКИ НАЖМИТЕ\nCTRL+ALT+0",
              font=FONT_WARN, bg=WIN11_CARD_BG, fg=WIN11_DANGER,
              justify="center", wraplength=460).pack(pady=(10, 0))
 
