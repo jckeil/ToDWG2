@@ -9,7 +9,7 @@ from PyInstaller.utils.hooks import collect_data_files
 dnd_datas = collect_data_files('tkinterdnd2')
 
 a = Analysis(
-    ['ToDWG_v1.py'],
+    ['ToDWG_v2.py'],
     pathex=[],
     binaries=[],
     datas=[('Logo_toDWG.ico', '.')] + dnd_datas,
