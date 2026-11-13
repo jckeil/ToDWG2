@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-REPO = "jckeil/ToDWG"
+REPO = "jckeil/ToDWG2"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
 
@@ -29,7 +29,8 @@ def default_asset(version):
 def token_from_git():
     """Токен из сохранённых учётных данных git (ничего не пишется на диск)."""
     try:
-        env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+        env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
+                   GCM_INTERACTIVE="never")
         result = subprocess.run(
             ["git", "credential", "fill"],
             input="protocol=https\nhost=github.com\n\n",
@@ -70,7 +71,8 @@ def upload_asset(upload_url, path):
 
 
 def section(text, version):
-    pattern = rf"^## {re.escape(version)}.*?$(.*?)(?=^## |\Z)"
+    base = version.split("-")[0]
+    pattern = rf"^## {re.escape(base)}.*?$(.*?)(?=^## |\Z)"
     match = re.search(pattern, text, re.S | re.M)
     return match.group(1).strip() if match else ""
 
@@ -106,7 +108,7 @@ def main():
             "name": f"ToDWG {version}",
             "body": body,
             "draft": False,
-            "prerelease": False,
+            "prerelease": True,
         }
         try:
             release = api(
