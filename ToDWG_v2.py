@@ -4699,6 +4699,10 @@ def run_gui():
             sync_bulk_controls()
         except NameError:
             pass
+        try:
+            fit_main_window()
+        except NameError:
+            pass
 
     def apply_theme_tree(widget, dark):
         """Перекрашивает поддерево виджетов под светлую/тёмную палитру."""
@@ -5124,8 +5128,48 @@ def run_gui():
               relief="flat", bd=0, highlightthickness=0, cursor="hand2",
               padx=12, pady=4).place(relx=0.0, x=16, y=12, anchor="nw")
 
-    tk.Label(card, text=APP_DISPLAY_VERSION, font=FONT_VERSION,
-             bg=WIN11_CARD_BG, fg=WIN11_SUBTEXT).pack(side="bottom", pady=(0, 6))
+    version_label = tk.Label(card, text=APP_DISPLAY_VERSION,
+                             font=FONT_VERSION, bg=WIN11_CARD_BG,
+                             fg=WIN11_SUBTEXT)
+    version_label.pack(side="bottom", pady=(0, 6))
+
+    def fit_main_window():
+        """Окно под размер содержимого: в обычном режиме меньше, в
+        расширенном — больше. Поля вокруг рабочей области равны со всех
+        сторон (не больше высоты кнопки «Настройки»), зазор до версии — мал."""
+        try:
+            root.update_idletasks()
+        except Exception:
+            return
+        bottom = 0
+        for child in card.winfo_children():
+            if child is version_label:
+                continue
+            try:
+                h = child.winfo_height()
+                y = child.winfo_y()
+            except Exception:
+                continue
+            if h > 1:
+                bottom = max(bottom, y + h)
+        if bottom <= 0:
+            return
+        try:
+            version_h = version_label.winfo_reqheight()
+        except Exception:
+            version_h = 20
+        card_h = bottom + 10 + version_h + 6   # малый зазор до версии
+        margin = 16                            # равен со всех сторон
+        card_w = 640
+        try:
+            card.place_configure(width=card_w, height=card_h)
+        except Exception:
+            pass
+        _center(root, card_w + 2 * margin, card_h + 2 * margin)
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
 
     prog = {"win": None, "label": None}
 
@@ -5767,6 +5811,10 @@ def run_gui():
 
     # Тема из конфига (по умолчанию тёмная): окно собрано — красим целиком.
     set_theme(dark_default)
+    try:
+        fit_main_window()
+    except Exception:
+        pass
     root.after(100, poll)
     root.mainloop()
 
