@@ -4437,7 +4437,7 @@ def run_gui():
     def sync_outdir_row():
         """В режиме папки выбор папки результата недоступен, пока не включён
         чекбокс «Выбрать папку вручную». Цвета — по текущей теме."""
-        active = (not folder_state["mode"]) or manual_folder_var.get()
+        active = manual_folder_var.get()
         dark = theme_state["dark"]
         text_active = "#E6E6E6" if dark else WIN11_TEXT
         subtext = "#A8A8A8" if dark else WIN11_SUBTEXT
@@ -4463,13 +4463,16 @@ def run_gui():
             if button is not None:
                 button.config(state="disabled", fg=dim, cursor="arrow",
                               bg=btn_bg)
-            outdir_var.set("рядом с исходным файлом")
+            if folder_state["mode"]:
+                outdir_var.set("рядом с исходным файлом (по умолчанию)")
+            else:
+                outdir_var.set(f"по умолчанию: {short_dir(out_state['dir'])}")
 
     # Галочка — выше строки «Папка результата», выровнена с другими галочками.
     manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
     manual_folder_row.pack(anchor="w", padx=140, pady=(10, 0), fill="x")
     manual_folder_check = tk.Checkbutton(
-        manual_folder_row, text="Выбрать папку вручную",
+        manual_folder_row, text="Выбрать папку для готовых файлов",
         variable=manual_folder_var, command=sync_outdir_row,
         font=FONT_BODY_SM, bg=WIN11_CARD_BG, fg=WIN11_TEXT,
         activebackground=WIN11_CARD_BG, activeforeground=WIN11_TEXT,
@@ -4478,7 +4481,7 @@ def run_gui():
     manual_folder_check.pack(side="left")
 
     outdir_row = tk.Frame(card, bg=WIN11_CARD_BG)
-    outdir_row.pack(padx=115, pady=(6, 0), fill="x")
+    outdir_row.pack(padx=(140, 30), pady=(6, 0), fill="x")
     outdir_label = tk.Label(outdir_row, text="Папка результата:",
                             font=FONT_BODY_SM, bg=WIN11_CARD_BG,
                             fg=WIN11_SUBTEXT)
@@ -4625,7 +4628,8 @@ def run_gui():
              justify="center").pack(pady=(10, 0))
 
     hint_label = tk.Label(card, textvariable=hint_var, font=FONT_BODY_SM,
-                          bg=WIN11_CARD_BG, fg=WIN11_DANGER)
+                          bg=WIN11_CARD_BG, fg=WIN11_DANGER,
+                          wraplength=410, justify="center")
 
     def sync_hint(*_):
         if hint_var.get().strip():
