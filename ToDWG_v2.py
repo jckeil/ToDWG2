@@ -4482,10 +4482,7 @@ def run_gui():
             render_outdir_value()
 
     def on_manual_folder_toggle():
-        """Включили галочку — сразу выбор папки (стартует от папки исходника)."""
-        if manual_folder_var.get():
-            if not on_choose_out_dir():
-                manual_folder_var.set(False)
+        """Галочка только включает строку результата; папку выбирают «Изменить…»."""
         sync_outdir_row()
 
     # Галочка — выше строки «Папка результата», выровнена с другими галочками.
@@ -4669,11 +4666,12 @@ def run_gui():
 
     red_top = tk.Label(
         card, text="НЕ ИСПОЛЬЗУЙТЕ КОМПЬЮТЕР ДО ОКОНЧАНИЯ КОНВЕРТАЦИИ",
-        font=FONT_WARN, bg=WIN11_CARD_BG, fg=WIN11_DANGER, justify="center")
+        font=FONT_WARN, bg=WIN11_CARD_BG, fg=WIN11_DANGER, justify="center",
+        wraplength=460)
     red_top.pack(pady=(14, 0))
     tk.Label(card, text="ДЛЯ АВАРИЙНОЙ ОСТАНОВКИ НАЖМИТЕ CTRL+ALT+0",
              font=FONT_WARN, bg=WIN11_CARD_BG, fg=WIN11_DANGER,
-             justify="center").pack(pady=(10, 0))
+             justify="center", wraplength=460).pack(pady=(10, 0))
 
     hint_label = tk.Label(card, textvariable=hint_var, font=FONT_BODY_SM,
                           bg=WIN11_CARD_BG, fg=WIN11_DANGER,
@@ -5159,7 +5157,7 @@ def run_gui():
         except Exception:
             version_h = 20
         card_h = bottom + 10 + version_h + 6   # малый зазор до версии
-        margin = 16                            # равен со всех сторон
+        margin = 32                            # равен со всех сторон
         card_w = 640
         try:
             card.place_configure(width=card_w, height=card_h)
