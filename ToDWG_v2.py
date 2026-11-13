@@ -3985,7 +3985,7 @@ def run_gui():
     root.configure(bg=WIN11_BG)
     apply_icon(root)
     initial_ttk_theme = ttk.Style().theme_use()
-    _center(root, 733, 770)
+    _center(root, 733, 820)
 
     def _report_callback_exception(exc_type, exc_value, exc_tb):
         log("Ошибка в обработчике интерфейса:\n"
@@ -3993,7 +3993,32 @@ def run_gui():
 
     root.report_callback_exception = _report_callback_exception
 
-    card = _card(root, 640, 656)
+    # --- Поднятие окна на передний план (клик по иконке на панели задач) ---
+    def _force_front(event=None):
+        if event is not None:
+            try:
+                if event.widget.winfo_toplevel() is not root:
+                    return
+            except Exception:
+                pass
+        try:
+            root.deiconify()
+            root.lift()
+            root.attributes("-topmost", True)
+            root.update_idletasks()
+            root.after(150, lambda: root.attributes("-topmost", False))
+            root.focus_force()
+        except Exception:
+            pass
+
+    def _on_map(event):
+        if event.widget is root:
+            _force_front()
+
+    root.bind("<Map>", _on_map, add="+")
+    root.bind("<FocusIn>", lambda e: root.lift(), add="+")
+
+    card = _card(root, 640, 706)
     ui_queue = queue.Queue()
 
     def emit(kind, payload=None):
@@ -4084,7 +4109,11 @@ def run_gui():
             initialdir=initial,
         )
         if paths:
+            folder_state["mode"] = False
+            manual_folder_var.set(False)
             add_files(paths)
+            hint_var.set("")
+            sync_outdir_row()
 
     def on_drop(event):
         try:
@@ -4096,7 +4125,11 @@ def run_gui():
             log("Перетаскивание: файлов .sdd не найдено.")
             hint_var.set("Перетащите файлы Schemagee (.sdd).")
             return
+        folder_state["mode"] = False
+        manual_folder_var.set(False)
         add_files(files)
+        hint_var.set("")
+        sync_outdir_row()
 
     DROP_BG = "#F5F5F5"
     DROP_BORDER = "#D0D0D0"
@@ -4149,6 +4182,9 @@ def run_gui():
             widget.dnd_bind("<<Drop>>", on_drop)
 
     pending = []
+    folder_state = {"mode": False}   # True — режим «обработать папку»
+    manual_folder_var = tk.BooleanVar(value=False)  # «Выбрать папку вручную»
+    outdir_widgets = {}
     # Последний запущенный список файлов: возвращается в окно при отмене.
     _LAST_PATHS = {"paths": []}
     theme_state = {"dark": dark_default}
@@ -4271,13 +4307,28 @@ def run_gui():
         ok, manual_count = read_manual_count()
         if not ok or not pending:
             return
+        manual_folder = folder_state["mode"] and manual_folder_var.get()
+        if manual_folder:
+            ok_dir, err = probe_path(out_state["dir"], need_write=True)
+            if not ok_dir:
+                hint_var.set(err)
+                messagebox.showerror("Папка результата недоступна", err,
+                                     parent=root)
+                return
         paths = list(pending)
         pending.clear()
+        hint_var.set("")
         refresh_pending()
         # Сохраняем список: если пользователь отменит работу (например,
         # открыт Schemagee), файлы вернутся в окно, а не пропадут.
         _LAST_PATHS["paths"] = list(paths)
-        start_work(paths, manual_count)
+        if folder_state["mode"]:
+            # Режим папки: результат рядом с исходником или в выбранной папке.
+            manual_folder_var.set(False)   # на новое конвертирование — сброс
+            sync_outdir_row()
+            start_folder_work(paths, manual_folder)
+        else:
+            start_work(paths, manual_count)
 
     def on_folder():
         """Выбрать папку и рекурсивно конвертировать все .sdd в ней.
@@ -4314,30 +4365,40 @@ def run_gui():
                 "В выбранной папке и подпапках не найдено файлов .sdd.",
                 parent=root)
             return
-        if not messagebox.askyesno(
-                "Обработать папку",
-                f"Найдено файлов .sdd: {len(files)}.\n\n"
-                f"Папка: {folder}\n\n"
-                "Каждый .dwg будет сохранён рядом с исходным .sdd "
-                "(при совпадении имени — с суффиксом (2), (3)…).\n"
-                "Ручные листы и формат не применяются.\n\n"
-                "Продолжить?",
-                parent=root):
-            return
-        hint_var.set(f"Найдено файлов: {len(files)}")
-        start_folder_work(files)
+        hint_var.set("")
+        folder_state["mode"] = True
+        manual_folder_var.set(False)
+        add_files(files)
+        sync_outdir_row()
+        messagebox.showinfo(
+            "Файлы найдены",
+            f"Найдено файлов .sdd: {len(files)}.\n\n"
+            "Файлы добавлены в список. Уберите лишние (×) и нажмите "
+            "«Конвертировать».\n\n"
+            "Результат: .dwg рядом с каждым исходным .sdd "
+            "(если не включить «Выбрать папку вручную»).",
+            parent=root)
+
+    folder_bar = tk.Frame(card, bg=WIN11_CARD_BG, width=410, height=24)
+    folder_bar.pack(padx=115, pady=(8, 0))
+    folder_bar.pack_propagate(False)
+    folder_btn = tk.Button(folder_bar, text="Обработать папку…",
+                           command=on_folder, font=FONT_BODY_SM,
+                           bg="#E5E5E5", fg=WIN11_TEXT,
+                           activebackground="#D6D6D6",
+                           activeforeground=WIN11_TEXT,
+                           relief="flat", bd=0, highlightthickness=0,
+                           cursor="hand2")
+    folder_btn.pack(fill="both", expand=True)
 
     buttons = tk.Frame(card, bg=WIN11_CARD_BG)
-    buttons.pack(pady=(20, 0))
+    buttons.pack(pady=(12, 0))
     select_btn = _button(buttons, "Выбрать файлы", on_select)
     select_btn.config(width=14)
     select_btn.pack(side="left", padx=(0, 10))
     convert_btn = _button(buttons, "Конвертировать", on_convert)
     convert_btn.config(width=14)
     convert_btn.pack(side="left")
-    folder_btn = _button(buttons, "Обработать папку…", on_folder)
-    folder_btn.config(width=16)
-    folder_btn.pack(side="left", padx=(10, 0))
     refresh_pending()
 
     def short_dir(path, limit=30):
@@ -4373,19 +4434,67 @@ def run_gui():
         refresh_outdir_label()
         log(f"Папка результата: {folder} (до конца сеанса)")
 
+    def sync_outdir_row():
+        """В режиме папки выбор папки результата недоступен, пока не включён
+        чекбокс «Выбрать папку вручную»."""
+        active = (not folder_state["mode"]) or manual_folder_var.get()
+        dim = "#9A9A9A"
+        label = outdir_widgets.get("label")
+        value = outdir_widgets.get("value")
+        button = outdir_widgets.get("button")
+        if active:
+            if label is not None:
+                label.config(fg=WIN11_SUBTEXT)
+            if value is not None:
+                value.config(fg=WIN11_TEXT)
+            if button is not None:
+                button.config(state="normal", fg=WIN11_TEXT, cursor="hand2",
+                              bg="#E5E5E5")
+            refresh_outdir_label()
+        else:
+            if label is not None:
+                label.config(fg=dim)
+            if value is not None:
+                value.config(fg=dim)
+            if button is not None:
+                button.config(state="disabled", fg=dim, cursor="arrow",
+                              bg="#E5E5E5")
+            outdir_var.set("рядом с исходным файлом")
+
     outdir_row = tk.Frame(card, bg=WIN11_CARD_BG)
-    outdir_row.pack(padx=115, pady=(12, 0), fill="x")
-    tk.Label(outdir_row, text="Папка результата:", font=FONT_BODY_SM,
-             bg=WIN11_CARD_BG, fg=WIN11_SUBTEXT).pack(side="left")
-    tk.Label(outdir_row, textvariable=outdir_var, font=FONT_BODY_SM,
-             bg=WIN11_CARD_BG, fg=WIN11_TEXT, anchor="w").pack(
-        side="left", padx=(6, 8), fill="x", expand=True)
-    tk.Button(outdir_row, text="Изменить…", command=on_choose_out_dir,
-              font=FONT_BODY_SM, bg="#E5E5E5", fg=WIN11_TEXT,
-              activebackground="#D6D6D6", activeforeground=WIN11_TEXT,
-              relief="flat", bd=0, highlightthickness=0, cursor="hand2",
-              padx=10, pady=2).pack(side="right")
+    outdir_row.pack(padx=115, pady=(10, 0), fill="x")
+    outdir_label = tk.Label(outdir_row, text="Папка результата:",
+                            font=FONT_BODY_SM, bg=WIN11_CARD_BG,
+                            fg=WIN11_SUBTEXT)
+    outdir_label.pack(side="left")
+    outdir_value = tk.Label(outdir_row, textvariable=outdir_var,
+                            font=FONT_BODY_SM, bg=WIN11_CARD_BG,
+                            fg=WIN11_TEXT, anchor="w")
+    outdir_value.pack(side="left", padx=(6, 8), fill="x", expand=True)
+    outdir_button = tk.Button(outdir_row, text="Изменить…",
+                              command=on_choose_out_dir,
+                              font=FONT_BODY_SM, bg="#E5E5E5", fg=WIN11_TEXT,
+                              activebackground="#D6D6D6",
+                              activeforeground=WIN11_TEXT,
+                              relief="flat", bd=0, highlightthickness=0,
+                              cursor="hand2", padx=10, pady=2)
+    outdir_button.pack(side="right")
+    outdir_widgets.update({"label": outdir_label, "value": outdir_value,
+                           "button": outdir_button})
+
+    manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
+    manual_folder_row.pack(anchor="w", padx=115, fill="x")
+    manual_folder_check = tk.Checkbutton(
+        manual_folder_row, text="Выбрать папку вручную",
+        variable=manual_folder_var, command=sync_outdir_row,
+        font=FONT_BODY_SM, bg=WIN11_CARD_BG, fg=WIN11_TEXT,
+        activebackground=WIN11_CARD_BG, activeforeground=WIN11_TEXT,
+        selectcolor=WIN11_CARD_BG, bd=0, highlightthickness=0,
+        cursor="hand2")
+    manual_folder_check.pack(side="left")
+
     refresh_outdir_label()
+    sync_outdir_row()
 
     def on_toggle_format():
         state = "readonly" if format_var.get() else "disabled"
@@ -4468,6 +4577,7 @@ def run_gui():
         else:
             on_toggle()
             on_toggle_format()
+            hint_var.set("")
             state, cursor = "normal", "hand2"
             if hint_label is not None:
                 hint_label.config(fg=danger)
@@ -4986,12 +5096,10 @@ def run_gui():
         if _LAST_PATHS["paths"]:
             add_files(_LAST_PATHS["paths"])
             _LAST_PATHS["paths"] = []
-        try:
-            root.deiconify()
-            root.lift()
-            root.focus_force()
-        except Exception:
-            pass
+        hint_var.set("")
+        manual_folder_var.set(False)
+        sync_outdir_row()
+        _force_front()
 
     def show_ask_schemagee(titles):
         """Спрашивает: закрыть уже открытый Schemagee и продолжить?"""
@@ -5477,8 +5585,9 @@ def run_gui():
                                save_log_var.get()),
                          daemon=True).start()
 
-    def folder_worker(paths):
-        """Обрабатывает список .sdd: результат кладётся рядом с исходником."""
+    def folder_worker(paths, manual_folder=False, result_dir=None):
+        """Обрабатывает список .sdd: результат рядом с исходником (или в
+        выбранной папке, если включён «Выбрать папку вручную»)."""
         _PIPELINE_STATE["running"] = True
         results = []
         try:
@@ -5490,6 +5599,8 @@ def run_gui():
                     emit("back_to_main")
                     return
                 source_dir = os.path.dirname(path)
+                target_dir = (result_dir if (manual_folder and result_dir)
+                              else source_dir)
                 work_root = tempfile.mkdtemp(prefix="ToDWG_")
                 if mouse_block_var.get():
                     start_mouse_block()
@@ -5503,12 +5614,12 @@ def run_gui():
                                          paper_w=PAPER_W, paper_h=PAPER_H,
                                          out_dir=work_root,
                                          save_log=save_log_var.get())
-                    dest = relocate_result(stats, source_dir)
+                    dest = relocate_result(stats, target_dir)
                     if dest:
                         stats["target"] = dest
                         stats["target_size"] = (os.path.getsize(dest)
                                                 if os.path.isfile(dest) else 0)
-                        stats["out_dir"] = source_dir
+                        stats["out_dir"] = target_dir
                     else:
                         stats["error"] = ("Не удалось сохранить DWG рядом "
                                           "с исходником.")
@@ -5550,14 +5661,16 @@ def run_gui():
             except Exception:
                 pass
 
-    def start_folder_work(paths):
+    def start_folder_work(paths, manual_folder=False):
         paths = [p for p in paths if os.path.isfile(p)]
         if not paths:
             return
         STOP_EVENT.clear()
+        hint_var.set("")
         root.withdraw()
         show_progress(f"Файлов: {len(paths)}. Начинаем…")
-        threading.Thread(target=folder_worker, args=(paths,),
+        threading.Thread(target=folder_worker,
+                         args=(paths, manual_folder, out_state["dir"]),
                          daemon=True).start()
 
     start_stop_hotkey()
