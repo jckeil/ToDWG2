@@ -4436,20 +4436,24 @@ def run_gui():
 
     def sync_outdir_row():
         """В режиме папки выбор папки результата недоступен, пока не включён
-        чекбокс «Выбрать папку вручную»."""
+        чекбокс «Выбрать папку вручную». Цвета — по текущей теме."""
         active = (not folder_state["mode"]) or manual_folder_var.get()
-        dim = "#9A9A9A"
+        dark = theme_state["dark"]
+        text_active = "#E6E6E6" if dark else WIN11_TEXT
+        subtext = "#A8A8A8" if dark else WIN11_SUBTEXT
+        dim = "#6E6E6E" if dark else "#9A9A9A"
+        btn_bg = "#3A3A3A" if dark else "#E5E5E5"
         label = outdir_widgets.get("label")
         value = outdir_widgets.get("value")
         button = outdir_widgets.get("button")
         if active:
             if label is not None:
-                label.config(fg=WIN11_SUBTEXT)
+                label.config(fg=subtext)
             if value is not None:
-                value.config(fg=WIN11_TEXT)
+                value.config(fg=text_active)
             if button is not None:
-                button.config(state="normal", fg=WIN11_TEXT, cursor="hand2",
-                              bg="#E5E5E5")
+                button.config(state="normal", fg=text_active, cursor="hand2",
+                              bg=btn_bg)
             refresh_outdir_label()
         else:
             if label is not None:
@@ -4458,11 +4462,23 @@ def run_gui():
                 value.config(fg=dim)
             if button is not None:
                 button.config(state="disabled", fg=dim, cursor="arrow",
-                              bg="#E5E5E5")
+                              bg=btn_bg)
             outdir_var.set("рядом с исходным файлом")
 
+    # Галочка — выше строки «Папка результата», выровнена с другими галочками.
+    manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
+    manual_folder_row.pack(anchor="w", padx=140, pady=(10, 0), fill="x")
+    manual_folder_check = tk.Checkbutton(
+        manual_folder_row, text="Выбрать папку вручную",
+        variable=manual_folder_var, command=sync_outdir_row,
+        font=FONT_BODY_SM, bg=WIN11_CARD_BG, fg=WIN11_TEXT,
+        activebackground=WIN11_CARD_BG, activeforeground=WIN11_TEXT,
+        selectcolor=WIN11_CARD_BG, bd=0, highlightthickness=0,
+        cursor="hand2")
+    manual_folder_check.pack(side="left")
+
     outdir_row = tk.Frame(card, bg=WIN11_CARD_BG)
-    outdir_row.pack(padx=115, pady=(10, 0), fill="x")
+    outdir_row.pack(padx=115, pady=(6, 0), fill="x")
     outdir_label = tk.Label(outdir_row, text="Папка результата:",
                             font=FONT_BODY_SM, bg=WIN11_CARD_BG,
                             fg=WIN11_SUBTEXT)
@@ -4481,17 +4497,6 @@ def run_gui():
     outdir_button.pack(side="right")
     outdir_widgets.update({"label": outdir_label, "value": outdir_value,
                            "button": outdir_button})
-
-    manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
-    manual_folder_row.pack(anchor="w", padx=115, fill="x")
-    manual_folder_check = tk.Checkbutton(
-        manual_folder_row, text="Выбрать папку вручную",
-        variable=manual_folder_var, command=sync_outdir_row,
-        font=FONT_BODY_SM, bg=WIN11_CARD_BG, fg=WIN11_TEXT,
-        activebackground=WIN11_CARD_BG, activeforeground=WIN11_TEXT,
-        selectcolor=WIN11_CARD_BG, bd=0, highlightthickness=0,
-        cursor="hand2")
-    manual_folder_check.pack(side="left")
 
     refresh_outdir_label()
     sync_outdir_row()
@@ -4791,6 +4796,10 @@ def run_gui():
         update_setting("theme", "dark" if theme_state["dark"] else "light")
         try:
             sync_bulk_controls()      # обновить цвет неактивных галочек
+        except NameError:
+            pass
+        try:
+            sync_outdir_row()         # перекрасить строку «Папка результата»
         except NameError:
             pass
 
