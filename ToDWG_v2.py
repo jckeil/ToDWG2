@@ -4063,6 +4063,7 @@ def run_gui():
     orient_value = tk.StringVar(value="горизонтальный")
     out_state = {"dir": choose_out_dir()}    # папка результата (не сохраняется)
     outdir_var = tk.StringVar()
+    advanced_state = {"on": bool(ui_settings.get("advanced_main", False))}
 
     def on_toggle():
         if manual_var.get():
@@ -4288,6 +4289,10 @@ def run_gui():
         paint_convert_button(bool(pending))
         if spin is not None:
             sync_bulk_controls()
+        try:
+            sync_outdir_row()
+        except NameError:
+            pass
 
     def add_files(paths):
         added = 0
@@ -4307,7 +4312,7 @@ def run_gui():
         ok, manual_count = read_manual_count()
         if not ok or not pending:
             return
-        manual_folder = folder_state["mode"] and manual_folder_var.get()
+        manual_folder = manual_folder_var.get()
         if manual_folder:
             ok_dir, err = probe_path(out_state["dir"], need_write=True)
             if not ok_dir:
@@ -4315,6 +4320,7 @@ def run_gui():
                 messagebox.showerror("Папка результата недоступна", err,
                                      parent=root)
                 return
+        paper_w, paper_h = paper_dimensions()
         paths = list(pending)
         pending.clear()
         hint_var.set("")
@@ -4322,13 +4328,12 @@ def run_gui():
         # Сохраняем список: если пользователь отменит работу (например,
         # открыт Schemagee), файлы вернутся в окно, а не пропадут.
         _LAST_PATHS["paths"] = list(paths)
-        if folder_state["mode"]:
-            # Режим папки: результат рядом с исходником или в выбранной папке.
-            manual_folder_var.set(False)   # на новое конвертирование — сброс
-            sync_outdir_row()
-            start_folder_work(paths, manual_folder)
-        else:
-            start_work(paths, manual_count)
+        manual_folder_var.set(False)   # на новое конвертирование — сброс
+        sync_outdir_row()
+        # По умолчанию каждый .dwg кладётся рядом со своим исходником;
+        # при включённой галочке — в выбранную общую папку.
+        start_folder_work(paths, manual_folder, manual_count,
+                          paper_w, paper_h)
 
     def on_folder():
         """Выбрать папку и рекурсивно конвертировать все .sdd в ней.
@@ -4376,7 +4381,7 @@ def run_gui():
             "Файлы добавлены в список. Уберите лишние (×) и нажмите "
             "«Конвертировать».\n\n"
             "Результат: .dwg рядом с каждым исходным .sdd "
-            "(если не включить «Выбрать папку вручную»).",
+            "(если не включить «Выбрать папку для готовых файлов»).",
             parent=root)
 
     folder_bar = tk.Frame(card, bg=WIN11_CARD_BG, width=460, height=24)
@@ -4414,8 +4419,12 @@ def run_gui():
         render_outdir_value()
 
     def on_choose_out_dir():
-        """Выбор папки результата; сетевая допускается после проверки."""
+        """Выбор папки результата; стартует от папки первого исходного файла."""
         initial = out_state["dir"]
+        if pending:
+            src = os.path.dirname(pending[0])
+            if src and os.path.isdir(src):
+                initial = src
         if not os.path.isdir(initial):
             initial = app_dir()
         folder = filedialog.askdirectory(
@@ -4425,16 +4434,17 @@ def run_gui():
             mustexist=True,
         )
         if not folder:
-            return
+            return False
         folder = os.path.normpath(folder)
         ok, err = probe_path(folder, need_write=True)
         if not ok:
             hint_var.set(err)
             messagebox.showerror("Папка недоступна", err, parent=root)
-            return
+            return False
         out_state["dir"] = folder
         refresh_outdir_label()
         log(f"Папка результата: {folder} (до конца сеанса)")
+        return True
 
     def sync_outdir_row():
         """В режиме папки выбор папки результата недоступен, пока не включён
@@ -4465,18 +4475,25 @@ def run_gui():
             if button is not None:
                 button.config(state="disabled", fg=dim, cursor="arrow",
                               bg=btn_bg)
-            if folder_state["mode"]:
-                outdir_view["full"] = "рядом с исходным файлом"
+            if pending:
+                outdir_view["full"] = "Рядом с исходным файлом"
             else:
                 outdir_view["full"] = out_state["dir"]
             render_outdir_value()
+
+    def on_manual_folder_toggle():
+        """Включили галочку — сразу выбор папки (стартует от папки исходника)."""
+        if manual_folder_var.get():
+            if not on_choose_out_dir():
+                manual_folder_var.set(False)
+        sync_outdir_row()
 
     # Галочка — выше строки «Папка результата», выровнена с другими галочками.
     manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
     manual_folder_row.pack(anchor="w", padx=90, pady=(10, 0), fill="x")
     manual_folder_check = tk.Checkbutton(
         manual_folder_row, text="Выбрать папку для готовых файлов",
-        variable=manual_folder_var, command=sync_outdir_row,
+        variable=manual_folder_var, command=on_manual_folder_toggle,
         font=FONT_BODY_SM, bg=WIN11_CARD_BG, fg=WIN11_TEXT,
         activebackground=WIN11_CARD_BG, activeforeground=WIN11_TEXT,
         selectcolor=WIN11_CARD_BG, bd=0, highlightthickness=0,
@@ -4553,7 +4570,8 @@ def run_gui():
                               highlightthickness=0, cursor="hand2")
 
     opts = tk.Frame(card, bg=WIN11_CARD_BG)
-    opts.pack(anchor="w", padx=90, pady=(16, 0))
+    if advanced_state["on"]:
+        opts.pack(anchor="w", padx=90, pady=(16, 0))
 
     manual_row = tk.Frame(opts, bg=WIN11_CARD_BG)
     manual_row.pack(anchor="w")
@@ -4606,8 +4624,11 @@ def run_gui():
             orient_combo.config(state="disabled")
             if hint_label is not None:
                 hint_label.config(fg=subtext)
-            hint_var.set("Для нескольких файлов указание количества листов "
-                         "и формата документа недоступны")
+            if advanced_state["on"]:
+                hint_var.set("Для нескольких файлов указание количества листов "
+                             "и формата документа недоступны")
+            else:
+                hint_var.set("")
             state, cursor = "disabled", "arrow"
         else:
             on_toggle()
@@ -4666,6 +4687,18 @@ def run_gui():
             hint_label.pack_forget()
 
     hint_var.trace_add("write", sync_hint)
+
+    def apply_advanced_main(on):
+        """Показывает/скрывает расширенные опции (кол-во листов, формат)."""
+        advanced_state["on"] = bool(on)
+        if on:
+            opts.pack(anchor="w", padx=90, pady=(16, 0), before=red_top)
+        else:
+            opts.pack_forget()
+        try:
+            sync_bulk_controls()
+        except NameError:
+            pass
 
     def apply_theme_tree(widget, dark):
         """Перекрашивает поддерево виджетов под светлую/тёмную палитру."""
@@ -4864,8 +4897,8 @@ def run_gui():
         win.configure(bg=WIN11_BG)
         apply_icon(win)
         win.transient(root)
-        _center(win, 580, 580)
-        card_s = _card(win, 520, 520)
+        _center(win, 580, 620)
+        card_s = _card(win, 520, 560)
 
         tk.Label(card_s, text="Настройки",
                  font=("Segoe UI Variable Display", 15, "bold"),
@@ -4910,6 +4943,8 @@ def run_gui():
         dlg_delete = tk.BooleanVar(value=delete_var.get())
         dlg_report = tk.BooleanVar(value=report_var.get())
         dlg_block_mouse = tk.BooleanVar(value=mouse_block_var.get())
+        dlg_advanced = tk.BooleanVar(
+            value=bool(load_settings().get("advanced_main", False)))
 
         check_row("Задержки кликера (для медленных ПК)", delays_var,
                   sync_delays,
@@ -5020,6 +5055,9 @@ def run_gui():
                   "Нажатия кнопок мыши не действуют (курсор двигается "
                   "свободно, клавиатура активна). Аварийный останов "
                   "Ctrl+Alt+0 снимает блокировку. По умолчанию включено.")
+        check_row("Расширенные настройки главного окна", dlg_advanced, None,
+                  "Показывать на главном экране ручное указание количества "
+                  "листов и выбор формата. По умолчанию выключено.")
 
         def close_settings():
             settings_win["win"] = None
@@ -5046,8 +5084,13 @@ def run_gui():
                 "delete_dxf": bool(dlg_delete.get()),
                 "show_report": bool(dlg_report.get()),
                 "block_mouse": bool(dlg_block_mouse.get()),
+                "advanced_main": bool(dlg_advanced.get()),
             })
             save_settings(data)
+            try:
+                apply_advanced_main(bool(dlg_advanced.get()))
+            except Exception:
+                pass
             save_log_var.set(save_log_on)
             delete_var.set(bool(dlg_delete.get()))
             report_var.set(bool(dlg_report.get()))
@@ -5626,9 +5669,10 @@ def run_gui():
                                save_log_var.get()),
                          daemon=True).start()
 
-    def folder_worker(paths, manual_folder=False, result_dir=None):
-        """Обрабатывает список .sdd: результат рядом с исходником (или в
-        выбранной папке, если включён «Выбрать папку вручную»)."""
+    def folder_worker(paths, manual_folder=False, result_dir=None,
+                      manual_count=None, paper_w=PAPER_W, paper_h=PAPER_H):
+        """Обрабатывает список .sdd: каждый .dwg — рядом со своим исходником
+        (или в выбранной общей папке, если включена галочка)."""
         _PIPELINE_STATE["running"] = True
         results = []
         try:
@@ -5650,9 +5694,9 @@ def run_gui():
                         if kind != "success":
                             emit(kind, payload)
 
-                    stats = run_pipeline(path, None, inner,
+                    stats = run_pipeline(path, manual_count, inner,
                                          delete_dxf=delete_var.get(),
-                                         paper_w=PAPER_W, paper_h=PAPER_H,
+                                         paper_w=paper_w, paper_h=paper_h,
                                          out_dir=work_root,
                                          save_log=save_log_var.get())
                     dest = relocate_result(stats, target_dir)
@@ -5702,7 +5746,8 @@ def run_gui():
             except Exception:
                 pass
 
-    def start_folder_work(paths, manual_folder=False):
+    def start_folder_work(paths, manual_folder=False, manual_count=None,
+                          paper_w=PAPER_W, paper_h=PAPER_H):
         paths = [p for p in paths if os.path.isfile(p)]
         if not paths:
             return
@@ -5710,9 +5755,11 @@ def run_gui():
         hint_var.set("")
         root.withdraw()
         show_progress(f"Файлов: {len(paths)}. Начинаем…")
-        threading.Thread(target=folder_worker,
-                         args=(paths, manual_folder, out_state["dir"]),
-                         daemon=True).start()
+        threading.Thread(
+            target=folder_worker,
+            args=(paths, manual_folder, out_state["dir"],
+                  manual_count, paper_w, paper_h),
+            daemon=True).start()
 
     start_stop_hotkey()
 
