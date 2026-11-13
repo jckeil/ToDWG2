@@ -4694,10 +4694,6 @@ def run_gui():
             sync_bulk_controls()
         except NameError:
             pass
-        try:
-            fit_main_window()
-        except NameError:
-            pass
 
     def apply_theme_tree(widget, dark):
         """Перекрашивает поддерево виджетов под светлую/тёмную палитру."""
@@ -5129,13 +5125,23 @@ def run_gui():
     version_label.pack(side="bottom", pady=(0, 6))
 
     def fit_main_window():
-        """Окно под размер содержимого: в обычном режиме меньше, в
-        расширенном — больше. Поля вокруг рабочей области равны со всех
-        сторон (не больше высоты кнопки «Настройки»), зазор до версии — мал."""
+        """Окно сразу рассчитывается под РАСШИРЕННЫЙ режим, чтобы включение
+        опций не выводило текст за границы и окно не «прыгало». Поля вокруг
+        рабочей области равны со всех сторон, зазор до версии — мал."""
         try:
             root.update_idletasks()
         except Exception:
             return
+        # Если расширенные опции сейчас скрыты — временно показываем их,
+        # чтобы измерить полную высоту и зарезервировать место заранее.
+        restore_hidden = False
+        if not advanced_state["on"]:
+            try:
+                opts.pack(anchor="w", padx=90, pady=(16, 0), before=red_top)
+                root.update_idletasks()
+                restore_hidden = True
+            except Exception:
+                restore_hidden = False
         bottom = 0
         for child in card.winfo_children():
             if child is version_label:
@@ -5148,6 +5154,11 @@ def run_gui():
             if h > 1:
                 bottom = max(bottom, y + h)
         if bottom <= 0:
+            if restore_hidden:
+                try:
+                    opts.pack_forget()
+                except Exception:
+                    pass
             return
         try:
             version_h = version_label.winfo_reqheight()
@@ -5161,6 +5172,11 @@ def run_gui():
         except Exception:
             pass
         _center(root, card_w + 2 * margin, card_h + 2 * margin)
+        if restore_hidden:
+            try:
+                opts.pack_forget()
+            except Exception:
+                pass
         try:
             root.update_idletasks()
         except Exception:
