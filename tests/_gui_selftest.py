@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import ttk
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import ToDWG_v1 as app
+import ToDWG_v2 as app
 
 report = []
 
@@ -70,7 +70,7 @@ def mainloop_stub(self, n=0):
         y = child.winfo_y()
         h = child.winfo_height()
         layout.append(f"{child.winfo_class()}:{text or '-'}@{y}+{h}")
-        if text == app.APP_VERSION:
+        if text == app.APP_DISPLAY_VERSION:
             continue
         bottom = max(bottom, y + h)
     report.append(("content_bottom", bottom,

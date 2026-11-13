@@ -13,7 +13,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import ToDWG_v1 as m
+import ToDWG_v2 as m
 
 m.init_log()
 

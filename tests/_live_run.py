@@ -13,7 +13,7 @@ import sys
 import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import ToDWG_v1 as app
+import ToDWG_v2 as app
 
 try:                        # консоль Windows может быть в cp1251
     sys.stdout.reconfigure(errors="replace")

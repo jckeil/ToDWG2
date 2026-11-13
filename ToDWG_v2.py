@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #
-#   ToDWG v1.0
+#   ToDWG v2.0 (beta)
 #   Один файл, один exe: Schemagee (.sdd) -> DXF -> DWG.
 #
 #   Структура файла (блоки идут строго по порядку):
@@ -70,10 +70,12 @@ from ezdxf.xref import ConflictPolicy
 # =============================================================================
 
 APP_NAME = "ToDWG"
-APP_VERSION = "v1.8"
-APP_FULL_TITLE = f"{APP_NAME} {APP_VERSION} — Schemagee → DXF → DWG"
+APP_VERSION = "2.0"
+APP_STAGE = "beta"                     # убрать, когда версия станет публичной
+APP_DISPLAY_VERSION = f"v{APP_VERSION} ({APP_STAGE})"   # "v2.0 (beta)"
+APP_FULL_TITLE = f"{APP_NAME} {APP_DISPLAY_VERSION} — Schemagee → DXF → DWG"
 APP_INNER_TEXT = "Schemagee → DXF → DWG"
-APP_USER_MODEL_ID = "ToDWG.App.V1"
+APP_USER_MODEL_ID = "ToDWG.App.V2"
 
 ICON_FILENAME = "Logo_toDWG.ico"
 
@@ -85,6 +87,9 @@ LOG_FILENAME = "ToDWG.log"
 
 STOP_HOTKEY = "ctrl+alt+0"
 STOP_EVENT = threading.Event()
+
+# Проверка доступности папки (в т.ч. сетевой): не даём интерфейсу зависнуть.
+NET_PROBE_TIMEOUT = 5.0   # секунды на одну проверку папки
 
 
 def app_dir():
@@ -402,6 +407,69 @@ def format_time(seconds):
 def format_duration(seconds):
     """'5.632 сек' для известного времени, '—' — если время неизвестно."""
     return "—" if seconds is None else f"{format_time(seconds)} сек"
+
+
+def probe_path(path, timeout=NET_PROBE_TIMEOUT, need_write=True):
+    """Проверяет доступность папки, не подвешивая интерфейс.
+
+    Возвращает (ok, error): ok=True — папка доступна (и, если need_write,
+    в неё можно писать); иначе error — понятный текст для пользователя.
+    Проверка идёт в фоновом потоке с ограничением по времени: обращение к
+    «мёртвому» сетевому серверу иначе может ждать десятки секунд.
+    """
+    if not path:
+        return False, "Путь не задан."
+    folder = os.path.normpath(str(path))
+    result = {"ok": False, "error": "проверка не выполнена"}
+
+    def worker():
+        try:
+            if not os.path.exists(folder):
+                result["error"] = f"Папка не найдена: {folder}"
+                return
+            if not os.path.isdir(folder):
+                result["error"] = f"Это не папка: {folder}"
+                return
+            try:
+                os.listdir(folder)
+            except OSError as e:
+                result["error"] = f"Нет доступа на чтение: {folder} ({e})"
+                return
+            if need_write:
+                probe = os.path.join(
+                    folder,
+                    f".ToDWG_probe_{os.getpid()}_{int(time.time())}.tmp")
+                try:
+                    with open(probe, "wb") as fp:
+                        fp.write(b"probe")
+                    os.remove(probe)
+                except OSError as e:
+                    try:
+                        if os.path.isfile(probe):
+                            os.remove(probe)
+                    except OSError:
+                        pass
+                    result["error"] = f"Нет прав на запись: {folder} ({e})"
+                    return
+            result["ok"] = True
+            result["error"] = ""
+        except Exception as e:   # noqa: BLE001 — любую ошибку показываем текстом
+            result["error"] = (f"Ошибка проверки «{folder}»: "
+                               f"{type(e).__name__}: {e}")
+
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
+    th.join(timeout)
+    if th.is_alive():
+        kind = "Сетевая папка" if is_network_path(folder) else "Папка"
+        message = f"{kind} недоступна (таймаут {timeout:g} с): {folder}"
+        log("Проверка папки: " + message)
+        return False, message
+    if result["ok"]:
+        log(f"Проверка папки пройдена: {folder}")
+        return True, ""
+    log("Проверка папки не пройдена: " + result["error"])
+    return False, result["error"]
 
 
 # =============================================================================
@@ -3531,6 +3599,55 @@ def make_run_folder(name, base_dir=None):
     return folder
 
 
+def find_sdd_recursive(root):
+    """Возвращает отсортированный список всех .sdd в папке и подпапках."""
+    found = []
+    for base, _dirs, files in os.walk(root):
+        for fname in files:
+            if fname.lower().endswith(".sdd"):
+                found.append(os.path.normpath(os.path.join(base, fname)))
+    found.sort(key=lambda p: p.lower())
+    return found
+
+
+def unique_path(directory, stem, ext):
+    """Свободное имя файла: имя.ext, имя (2).ext, имя (3).ext, …"""
+    candidate = os.path.join(directory, f"{stem}{ext}")
+    if not os.path.exists(candidate):
+        return candidate
+    index = 2
+    while True:
+        candidate = os.path.join(directory, f"{stem} ({index}){ext}")
+        if not os.path.exists(candidate):
+            return candidate
+        index += 1
+
+
+def relocate_result(stats, target_dir):
+    """Кладёт готовый DWG/DXF рядом с исходником под уникальным именем.
+
+    Возвращает новый путь или None, если перенести не удалось. Временная
+    папка-источник удаляется вызывающей стороной.
+    """
+    target = stats.get("target")
+    if not target or not os.path.isfile(target):
+        return None
+    stem = os.path.splitext(os.path.basename(target))[0]
+    ext = os.path.splitext(target)[1]
+    dest = unique_path(target_dir, stem, ext)
+    try:
+        shutil.move(target, dest)
+    except Exception as e:
+        log(f"Не удалось перенести результат: {e}")
+        try:
+            shutil.copy2(target, dest)
+        except Exception as e2:
+            log(f"Не удалось скопировать результат: {e2}")
+            return None
+    log(f"Результат рядом с исходником: {dest}")
+    return dest
+
+
 def write_result_json(run_dir, payload):
     """Кладёт result.json в папку результата (машиночитаемый отчёт)."""
     path = os.path.join(run_dir, "result.json")
@@ -3578,7 +3695,7 @@ def run_pipeline(file_path, manual_count, emit, delete_dxf=True,
         )
 
     log("=" * 70)
-    log(f"{APP_NAME} {APP_VERSION}: {source}")
+    log(f"{APP_NAME} {APP_DISPLAY_VERSION}: {source}")
     if manual_count:
         log(f"Количество листов: вручную ({manual_count})")
     else:
@@ -4162,6 +4279,54 @@ def run_gui():
         _LAST_PATHS["paths"] = list(paths)
         start_work(paths, manual_count)
 
+    def on_folder():
+        """Выбрать папку и рекурсивно конвертировать все .sdd в ней.
+
+        Результат (.dwg) кладётся рядом с каждым исходным .sdd; при совпадении
+        имени добавляется суффикс (2), (3)… Ручные листы/формат не применяются:
+        у разных файлов они могут отличаться.
+        """
+        initial = choose_start_dir()
+        folder = filedialog.askdirectory(
+            parent=root,
+            title="Выберите папку с файлами .sdd",
+            initialdir=initial,
+            mustexist=True,
+        )
+        if not folder:
+            return
+        folder = os.path.normpath(folder)
+        hint_var.set("Проверяем доступность папки…")
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
+        ok, err = probe_path(folder, need_write=True)
+        if not ok:
+            hint_var.set(err)
+            messagebox.showerror("Папка недоступна", err, parent=root)
+            return
+        files = find_sdd_recursive(folder)
+        if not files:
+            hint_var.set("В папке нет файлов .sdd.")
+            messagebox.showinfo(
+                "Нет файлов",
+                "В выбранной папке и подпапках не найдено файлов .sdd.",
+                parent=root)
+            return
+        if not messagebox.askyesno(
+                "Обработать папку",
+                f"Найдено файлов .sdd: {len(files)}.\n\n"
+                f"Папка: {folder}\n\n"
+                "Каждый .dwg будет сохранён рядом с исходным .sdd "
+                "(при совпадении имени — с суффиксом (2), (3)…).\n"
+                "Ручные листы и формат не применяются.\n\n"
+                "Продолжить?",
+                parent=root):
+            return
+        hint_var.set(f"Найдено файлов: {len(files)}")
+        start_folder_work(files)
+
     buttons = tk.Frame(card, bg=WIN11_CARD_BG)
     buttons.pack(pady=(20, 0))
     select_btn = _button(buttons, "Выбрать файлы", on_select)
@@ -4170,6 +4335,9 @@ def run_gui():
     convert_btn = _button(buttons, "Конвертировать", on_convert)
     convert_btn.config(width=14)
     convert_btn.pack(side="left")
+    folder_btn = _button(buttons, "Обработать папку…", on_folder)
+    folder_btn.config(width=16)
+    folder_btn.pack(side="left", padx=(10, 0))
     refresh_pending()
 
     def short_dir(path, limit=30):
@@ -4183,7 +4351,7 @@ def run_gui():
         outdir_var.set(short_dir(out_state["dir"]))
 
     def on_choose_out_dir():
-        """Выбор папки результата (только локальной — сеть может зависнуть)."""
+        """Выбор папки результата; сетевая допускается после проверки."""
         initial = out_state["dir"]
         if not os.path.isdir(initial):
             initial = app_dir()
@@ -4196,8 +4364,10 @@ def run_gui():
         if not folder:
             return
         folder = os.path.normpath(folder)
-        if is_network_path(folder):
-            hint_var.set("Выберите локальную папку: сетевая может зависнуть.")
+        ok, err = probe_path(folder, need_write=True)
+        if not ok:
+            hint_var.set(err)
+            messagebox.showerror("Папка недоступна", err, parent=root)
             return
         out_state["dir"] = folder
         refresh_outdir_label()
@@ -4760,7 +4930,7 @@ def run_gui():
               relief="flat", bd=0, highlightthickness=0, cursor="hand2",
               padx=12, pady=4).place(relx=0.0, x=16, y=12, anchor="nw")
 
-    tk.Label(card, text=APP_VERSION, font=FONT_VERSION,
+    tk.Label(card, text=APP_DISPLAY_VERSION, font=FONT_VERSION,
              bg=WIN11_CARD_BG, fg=WIN11_SUBTEXT).pack(side="bottom", pady=(0, 6))
 
     prog = {"win": None, "label": None}
@@ -5307,6 +5477,89 @@ def run_gui():
                                save_log_var.get()),
                          daemon=True).start()
 
+    def folder_worker(paths):
+        """Обрабатывает список .sdd: результат кладётся рядом с исходником."""
+        _PIPELINE_STATE["running"] = True
+        results = []
+        try:
+            for index, path in enumerate(paths, 1):
+                check_stop()
+                emit("progress", f"Файл {index} из {len(paths)}: "
+                                 f"{os.path.basename(path)}")
+                if not ask_close_schemagee():
+                    emit("back_to_main")
+                    return
+                source_dir = os.path.dirname(path)
+                work_root = tempfile.mkdtemp(prefix="ToDWG_")
+                if mouse_block_var.get():
+                    start_mouse_block()
+                try:
+                    def inner(kind, payload=None):
+                        if kind != "success":
+                            emit(kind, payload)
+
+                    stats = run_pipeline(path, None, inner,
+                                         delete_dxf=delete_var.get(),
+                                         paper_w=PAPER_W, paper_h=PAPER_H,
+                                         out_dir=work_root,
+                                         save_log=save_log_var.get())
+                    dest = relocate_result(stats, source_dir)
+                    if dest:
+                        stats["target"] = dest
+                        stats["target_size"] = (os.path.getsize(dest)
+                                                if os.path.isfile(dest) else 0)
+                        stats["out_dir"] = source_dir
+                    else:
+                        stats["error"] = ("Не удалось сохранить DWG рядом "
+                                          "с исходником.")
+                    results.append(stats)
+                except TaskStopped:
+                    raise
+                except Exception as e:
+                    log("ОШИБКА:\n" + traceback.format_exc())
+                    results.append({
+                        "source": path,
+                        "name": os.path.splitext(os.path.basename(path))[0],
+                        "error": f"{type(e).__name__}: {e}",
+                        "out_dir": "",
+                    })
+                finally:
+                    stop_mouse_block()
+                    shutil.rmtree(work_root, ignore_errors=True)
+
+            kind = report_kind_for(results)
+            if kind == "batch":
+                emit("batch", results)
+            elif kind == "success":
+                emit("success", results[0])
+            elif kind == "error":
+                emit("error", results[0].get("error") or "Неизвестная ошибка.")
+        except TaskStopped:
+            log("ЗАДАЧА ПРЕРВАНА ПОЛЬЗОВАТЕЛЕМ.")
+            emit("stopped")
+        except Exception as e:
+            log("ОШИБКА:\n" + traceback.format_exc())
+            emit("error", f"{type(e).__name__}: {e}")
+        finally:
+            _PIPELINE_STATE["running"] = False
+            stop_mouse_block()
+            try:
+                with stop_suspended():
+                    if _OWNED_SCHEMAGEE["opened"] and find_schemagee_window()[0]:
+                        close_schemagee(timeout=5.0)
+            except Exception:
+                pass
+
+    def start_folder_work(paths):
+        paths = [p for p in paths if os.path.isfile(p)]
+        if not paths:
+            return
+        STOP_EVENT.clear()
+        root.withdraw()
+        show_progress(f"Файлов: {len(paths)}. Начинаем…")
+        threading.Thread(target=folder_worker, args=(paths,),
+                         daemon=True).start()
+
     start_stop_hotkey()
 
     root.protocol("WM_DELETE_WINDOW", lambda: close_app(0))
@@ -5329,7 +5582,7 @@ def run_gui():
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description=f"{APP_NAME} {APP_VERSION}: Schemagee (.sdd) -> DXF -> DWG"
+        description=f"{APP_NAME} {APP_DISPLAY_VERSION}: Schemagee (.sdd) -> DXF -> DWG"
     )
     parser.add_argument(
         "--dxf-folder", default=None,
@@ -5368,7 +5621,7 @@ def main():
     STOP_EVENT.clear()
 
     log("=" * 70)
-    log(f"{APP_NAME} {APP_VERSION}: старт")
+    log(f"{APP_NAME} {APP_DISPLAY_VERSION}: старт")
     log(f"Папка программы: {BASE_DIR}")
     log(f"Drag & drop: {'доступен' if HAS_DND else 'недоступен'}")
 
