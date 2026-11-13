@@ -4135,10 +4135,10 @@ def run_gui():
     DROP_BORDER = "#D0D0D0"
     AREA_BG = "#FFFFFF"
 
-    files_area = tk.Frame(card, bg=DROP_BG, width=410, height=200,
+    files_area = tk.Frame(card, bg=DROP_BG, width=460, height=200,
                           highlightthickness=1,
                           highlightbackground=DROP_BORDER)
-    files_area.pack(padx=115, pady=(0, 0))
+    files_area.pack(padx=90, pady=(0, 0))
     files_area.pack_propagate(False)
 
     drop_placeholder = tk.Label(
@@ -4155,7 +4155,7 @@ def run_gui():
     files_canvas.configure(yscrollcommand=files_scroll.set)
     files_box = tk.Frame(files_canvas, bg=AREA_BG)
     files_canvas.create_window((0, 0), window=files_box, anchor="nw",
-                               width=386)
+                               width=436)
     files_box.bind("<Configure>", lambda e: files_canvas.configure(
         scrollregion=files_canvas.bbox("all")))
 
@@ -4379,8 +4379,8 @@ def run_gui():
             "(если не включить «Выбрать папку вручную»).",
             parent=root)
 
-    folder_bar = tk.Frame(card, bg=WIN11_CARD_BG, width=410, height=24)
-    folder_bar.pack(padx=115, pady=(8, 0))
+    folder_bar = tk.Frame(card, bg=WIN11_CARD_BG, width=460, height=24)
+    folder_bar.pack(padx=90, pady=(8, 0))
     folder_bar.pack_propagate(False)
     folder_btn = tk.Button(folder_bar, text="Обработать папку…",
                            command=on_folder, font=FONT_BODY_SM,
@@ -4392,13 +4392,14 @@ def run_gui():
     folder_btn.pack(fill="both", expand=True)
 
     buttons = tk.Frame(card, bg=WIN11_CARD_BG)
-    buttons.pack(pady=(12, 0))
-    select_btn = _button(buttons, "Выбрать файлы", on_select)
-    select_btn.config(width=14)
-    select_btn.pack(side="left", padx=(0, 10))
+    buttons.pack(padx=90, pady=(12, 0), fill="x")
+    buttons.columnconfigure(0, weight=1, uniform="btn")
+    buttons.columnconfigure(1, minsize=40)     # увеличенный интервал
+    buttons.columnconfigure(2, weight=1, uniform="btn")
+    select_btn = _button(buttons, "Добавить файлы", on_select)
+    select_btn.grid(row=0, column=0, sticky="ew")
     convert_btn = _button(buttons, "Конвертировать", on_convert)
-    convert_btn.config(width=14)
-    convert_btn.pack(side="left")
+    convert_btn.grid(row=0, column=2, sticky="ew")
     refresh_pending()
 
     def short_dir(path, limit=30):
@@ -4472,7 +4473,7 @@ def run_gui():
 
     # Галочка — выше строки «Папка результата», выровнена с другими галочками.
     manual_folder_row = tk.Frame(card, bg=WIN11_CARD_BG)
-    manual_folder_row.pack(anchor="w", padx=140, pady=(10, 0), fill="x")
+    manual_folder_row.pack(anchor="w", padx=90, pady=(10, 0), fill="x")
     manual_folder_check = tk.Checkbutton(
         manual_folder_row, text="Выбрать папку для готовых файлов",
         variable=manual_folder_var, command=sync_outdir_row,
@@ -4483,7 +4484,7 @@ def run_gui():
     manual_folder_check.pack(side="left")
 
     outdir_row = tk.Frame(card, bg=WIN11_CARD_BG)
-    outdir_row.pack(padx=(140, 30), pady=(6, 0), fill="x")
+    outdir_row.pack(padx=(90, 90), pady=(6, 0), fill="x")
     outdir_label = tk.Label(outdir_row, text="Папка результата:",
                             font=FONT_BODY_SM, bg=WIN11_CARD_BG,
                             fg=WIN11_SUBTEXT)
@@ -4552,7 +4553,7 @@ def run_gui():
                               highlightthickness=0, cursor="hand2")
 
     opts = tk.Frame(card, bg=WIN11_CARD_BG)
-    opts.pack(anchor="w", padx=140, pady=(16, 0))
+    opts.pack(anchor="w", padx=90, pady=(16, 0))
 
     manual_row = tk.Frame(opts, bg=WIN11_CARD_BG)
     manual_row.pack(anchor="w")
@@ -4659,7 +4660,7 @@ def run_gui():
 
     def sync_hint(*_):
         if hint_var.get().strip():
-            hint_label.pack(pady=(2, 0), padx=(140, 10), anchor="w",
+            hint_label.pack(pady=(2, 0), padx=(90, 10), anchor="w",
                             before=red_top)
         else:
             hint_label.pack_forget()
