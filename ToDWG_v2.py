@@ -70,7 +70,7 @@ from ezdxf.xref import ConflictPolicy
 # =============================================================================
 
 APP_NAME = "ToDWG"
-APP_VERSION = "2.0"
+APP_VERSION = "2.1"
 APP_STAGE = "beta"                     # убрать, когда версия станет публичной
 APP_DISPLAY_VERSION = f"v{APP_VERSION} ({APP_STAGE})"   # "v2.0 (beta)"
 APP_FULL_TITLE = f"{APP_NAME} {APP_DISPLAY_VERSION} — Schemagee → DXF → DWG"
